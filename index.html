@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Informe STATUS · Producción Urby</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+/* =====================================================================
+   CONFIGURACIÓN — solo hay que pegar los tres primeros datos
+   ===================================================================== */
+const CONFIG = {
+  clientId:  'PEGAR-AQUI-ID-DE-APLICACION',   // TI: Id. de aplicación (cliente)
+  tenantId:  'PEGAR-AQUI-ID-DE-DIRECTORIO',   // TI: Id. de directorio (inquilino)
+  linkExcel: 'PEGAR-AQUI-VINCULO-DEL-EXCEL',  // SharePoint: Copiar vínculo del archivo
+  refrescarMin: 15,                           // relee el Excel cada X minutos
+  metaOTIF: 0.90,
+  /* Rangos que lee el tablero. Primero busca el NOMBRE (Fórmulas > Administrador de nombres);
+     si no existe, usa la hoja y la dirección. */
+  rangos: {
+    kpis:    { nombre: 'st_kpis',         hoja: 'STATUS',              dir: 'A7:Z7'  },
+    aux:     { nombre: 'st_aux',          hoja: 'STATUS',              dir: 'A8:W10' },
+    lineas:  { nombre: 'st_lineas',       hoja: 'STATUS',              dir: 'B13:Z24' },
+    otros:   { nombre: 'st_otros',        hoja: 'STATUS',              dir: 'B26:O32' },
+    notas:   { nombre: 'st_notas',        hoja: 'STATUS',              dir: 'B34:B37' },
+    entrega: { nombre: 'st_entrega',      hoja: 'STATUS',              dir: 'B40:C42' },
+    resumen: { nombre: 'res_indicadores', hoja: 'resumen indicadores', dir: 'A1:O33' }
+  }
+};
+const DEMO = /*__DEMO__*/null;
+</script>
+<style>
+:root{
+  --grupoy:#8DC63F;
+  --brand:#44B3E1; --brand-ink:#14709A; --brand-soft:#E3F4FB; --brand-light:#8ED0EC; --brand-pale:#C3E7F6; --contrast:#F5B400;
+  --navy:#0F2C52; --line:#D5DDE8; --ok:#1E8E5A; --ok-bg:#E2F3EA; --late:#C8372D; --late-bg:#FBE5E3;
+  --warn:#D9730D; --warn-bg:#FCEFD9; --paper:#F3F5F8; --ink:#18212F; --muted:#5B6778; --white:#fff;
+}
+html[data-uen=CONVEY]{--brand:#F8AB1D; --brand-ink:#9C5D00; --brand-soft:#FEF3DE; --brand-light:#FACB6E; --brand-pale:#FDE3B0; --contrast:#0F2C52}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{overflow-x:hidden}
+body{font-family:Montserrat,system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.45;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+
+/* encabezado */
+.top{background:var(--navy);color:#fff;padding:18px 32px 0;border-bottom:5px solid var(--brand)}
+.top-row{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:14px}
+.brand img{height:42px;background:#fff;border-radius:6px;padding:4px 8px}
+.brand .fallback{font-weight:800;font-size:22px;letter-spacing:-.5px}
+.brand .fallback b{color:var(--grupoy)}
+.brand-sep{width:1px;height:40px;background:#34557F}
+.title h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.2px}
+.title p{margin:2px 0 0;font-size:13px;color:#B9C8DD}
+.controls{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn-top{display:inline-flex;align-items:center;gap:7px;background:#16386A;border:1px solid #34557F;color:#fff;border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer;font-size:13px}
+.btn-top:hover{background:#1F4A86}
+.btn-top svg{width:16px;height:16px}
+.btn-top.spin svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.user{font-size:12px;color:#B9C8DD;display:flex;flex-direction:column;align-items:flex-end}
+.user a{color:#D7E2F0;cursor:pointer;text-decoration:underline}
+.unit-tabs{display:flex;gap:6px;margin-top:16px}
+.unit-tabs button{background:none;border:0;color:#B9C8DD;padding:8px 18px 10px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;display:flex;align-items:center;gap:12px;border-radius:8px 8px 0 0;text-align:left;line-height:1.2}
+.unit-tabs button[aria-selected=true]{color:#fff;background:rgba(255,255,255,.07)}
+.unit-tabs button[data-view=URBY][aria-selected=true]{border-color:#44B3E1}
+.unit-tabs button[data-view=CONVEY][aria-selected=true]{border-color:#F8AB1D}
+.unit-tabs button[aria-selected=false] .logo-plate{opacity:.6;filter:grayscale(.4)}
+.unit-tabs .tab-sub{display:block;font-size:12px;font-weight:600;color:#8FA6C4}
+.unit-tabs button[aria-selected=true] .tab-sub{color:#D7E2F0}
+.logo-plate{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:8px;padding:5px 12px}
+.logo-plate img{display:block;height:100%;width:auto;max-width:100%;object-fit:contain}
+.logo-plate b{font-size:20px;font-weight:800}
+.logo-hdr{height:52px;min-width:120px;box-shadow:0 0 0 3px var(--brand)}
+.logo-tab{height:38px;min-width:96px}
+
+/* franja de estado */
+.meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.chip{background:#fff;border:1px solid var(--line);border-radius:16px;padding:5px 12px;font-size:12.5px;color:var(--muted)}
+.chip b{color:var(--navy)}
+.chip.mes{background:var(--navy);border-color:var(--navy);color:#B9C8DD}
+.chip.mes b{color:#fff}
+.chip.warn{background:var(--warn-bg);border-color:#F3D2A6;color:var(--warn)}
+
+main{padding:20px 32px 48px;max-width:1500px;margin:0 auto}
+h2{font-size:17px;margin:0;font-weight:700;color:var(--navy)}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin:30px 0 12px;flex-wrap:wrap}
+.sec-head p{margin:0;color:var(--muted);font-size:13px}
+
+/* pilares */
+.pillars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.pillar{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px}
+.pillar.d{grid-column:1/-1}
+.pillar.d .kpis{grid-template-columns:repeat(8,minmax(0,1fr))}
+.pillar-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.pillar-head .letter{font-size:36px;line-height:.9;font-weight:800;font-style:italic;color:var(--brand-ink);width:30px}
+.pillar-head span{font-weight:600;color:var(--muted);font-size:13px}
+.ico{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;flex:none}
+.ico svg{width:19px;height:19px}
+.ico-D{background:#E3ECF7;color:var(--brand)} .ico-Q{background:#E2F3EA;color:var(--ok)} .ico-P{background:#EDE7F6;color:#5B3FA0}
+.ico-C{background:#FFF4D6;color:#A87A00} .ico-S{background:#FBE5E3;color:var(--late)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px}
+.kpi{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px}
+.kpi .v{font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.4px;white-space:nowrap}
+.kpi .l{font-size:12px;color:var(--muted);line-height:1.25}
+.kpi .s{font-size:11px;font-weight:600}
+.kpi .s.up{color:var(--ok)} .kpi .s.down{color:var(--late)} .kpi .s.mid{color:var(--warn)}
+.kpi.empty .v{color:#A6B0BE}
+.tag{font-size:10px;font-weight:600;color:var(--warn);background:var(--warn-bg);padding:1px 6px;border-radius:10px;align-self:flex-start}
+.ring{width:100%;height:6px;background:#E6EBF2;border-radius:3px;margin-top:4px;position:relative}
+.ring i{display:block;height:100%;border-radius:3px}
+.ring b{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink)}
+
+/* tarjetas y tablas */
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h3{margin:0 0 4px;font-size:14px;color:var(--navy)}
+.card .hint{margin:0 0 10px;font-size:12px;color:var(--muted)}
+.card-head{display:flex;align-items:flex-start;gap:10px}
+.card-head h3{flex:1}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.chart-box{position:relative;height:250px}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{background:var(--brand-ink);color:#fff;font-weight:600;font-size:12px;text-align:center;padding:8px 6px;line-height:1.2}
+th:first-child{text-align:left;border-top-left-radius:6px} th:last-child{border-top-right-radius:6px}
+td{padding:7px 6px;border-bottom:1px dashed var(--line);text-align:center;white-space:nowrap}
+td:first-child{text-align:left;font-weight:600}
+td.wrap{white-space:normal;text-align:left;font-weight:400;max-width:260px;color:var(--muted)}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover td{background:var(--brand-soft)}
+tr.total td{background:#F7F9FC;font-weight:700;border-top:2px solid var(--brand-ink)}
+.pill{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.late{background:var(--late-bg);color:var(--late)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.off{background:#EEF1F5;color:var(--muted)}
+.pill.blue{background:var(--brand-soft);color:var(--brand-ink)}
+.bar{display:flex;align-items:center;gap:6px;justify-content:center}
+.bar .track{width:58px;height:7px;background:#E6EBF2;border-radius:4px;overflow:hidden}
+.bar .track i{display:block;height:100%}
+.bar span{min-width:42px;text-align:right}
+.datebad{color:var(--late);font-weight:700}
+.mtable td,.mtable th{text-align:right;padding:6px 8px}
+.mtable td:first-child,.mtable th:first-child{text-align:left}
+.mtable tr.grp td{background:#F7F9FC;font-weight:700;color:var(--navy);text-align:left;padding-top:10px}
+.mtable td.cur{background:var(--brand-soft);font-weight:700}
+.mtable th.cur{background:var(--contrast);color:var(--navy)}
+html[data-uen=CONVEY] .mtable th.cur{color:#fff}
+.mtable td.sub{padding-left:22px;font-weight:500;color:var(--muted)}
+.mtable td.fut{color:#A6B0BE}
+.list{margin:0;padding:0;list-style:none}
+.list li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.list li span{color:var(--muted);font-size:12.5px}
+.notes{margin:0;padding-left:18px;color:var(--ink);font-size:13px}
+.notes li{margin-bottom:8px}
+.big3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.big3 div{background:var(--paper);border-radius:8px;padding:12px 6px}
+.big3 b{display:block;font-size:24px;color:var(--navy)}
+.big3 span{font-size:12px;color:var(--muted)}
+.banner{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--line);border-left:6px solid var(--brand);border-radius:10px;padding:14px 18px}
+.banner b{display:block;font-size:17px;color:var(--navy)}
+.banner span{font-size:13px;color:var(--muted)}
+.foot{margin-top:36px;font-size:12px;color:var(--muted);max-width:980px}
+
+/* pantallas de estado */
+.screen{min-height:calc(100vh - 140px);display:flex;align-items:center;justify-content:center;padding:24px}
+.screen .box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:28px 30px;max-width:560px;text-align:center;box-shadow:0 10px 30px rgba(15,44,82,.08)}
+.screen h2{font-size:19px;margin-bottom:8px}
+.screen p{color:var(--muted);margin:0 0 14px}
+.screen .det{font-size:12px;background:var(--paper);border-radius:8px;padding:10px;text-align:left;color:var(--muted);word-break:break-word}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--brand-ink);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
+.btn:hover{filter:brightness(1.1)}
+.loader{width:42px;height:42px;border:4px solid var(--brand-pale);border-top-color:var(--brand-ink);border-radius:50%;margin:0 auto 14px;animation:spin 1s linear infinite}
+
+/* panel lateral y modal */
+.scrim{position:fixed;inset:0;background:rgba(15,44,82,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(720px,96vw);background:#fff;z-index:21;transform:translateX(100%);visibility:hidden;transition:transform .25s ease,visibility .25s;display:flex;flex-direction:column;box-shadow:-10px 0 30px rgba(15,44,82,.18)}
+body.open .scrim{opacity:1;pointer-events:auto}
+body.open .drawer{transform:none;visibility:visible}
+.dr-head{padding:20px 24px 14px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:flex-start}
+.dr-head h2{font-size:19px}
+.dr-head p{margin:3px 0 0;color:var(--muted);font-size:13px}
+.dr-close{margin-left:auto;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:600}
+.dr-body{padding:18px 24px 30px;overflow-y:auto;flex:1}
+.dr-body h4{margin:18px 0 8px;font-size:13.5px;color:var(--navy)}
+.mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px}
+.mini div{background:var(--paper);border-radius:8px;padding:10px 12px}
+.mini b{display:block;font-size:20px}
+.mini span{font-size:12px;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:40;display:none;max-width:90vw}
+:fullscreen body,body:fullscreen{overflow-y:auto}
+
+@media (max-width:1200px){.pillars{grid-template-columns:1fr 1fr}.pillar.d .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.grid3,.grid2{grid-template-columns:1fr}}
+@media (max-width:640px){.top,main{padding-left:16px;padding-right:16px}.pillars{grid-template-columns:1fr}.pillar.d .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.controls{margin-left:0}.user{align-items:flex-start}.unit-tabs button{padding:8px 10px}.unit-tabs .tab-sub{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-row">
+    <div class="brand">
+      <img src="https://grupoy.com.co/wp-content/uploads/2023/09/Logo-Principal-GrupoY-img-color.png" alt="Grupo Y" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'fallback',innerHTML:'Grupo <b>Y</b>'}))">
+      <span class="brand-sep" aria-hidden="true"></span>
+      <span id="uenLogo"></span>
+    </div>
+    <div class="title">
+      <h1 id="mainTitle">Indicador de cumplimiento de pedidos y estatus por línea</h1>
+      <p id="subtitle">Informe STATUS · conectado al Excel de producción en SharePoint</p>
+    </div>
+    <div class="controls">
+      <button class="btn-top" id="btnRefresh" type="button" title="Volver a leer el Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Actualizar</span></button>
+      <button class="btn-top" id="btnFs" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg><span>Pantalla completa</span></button>
+      <div class="user" id="userBox"></div>
+    </div>
+  </div>
+  <nav class="unit-tabs" role="tablist" id="unitTabs" hidden>
+    <button role="tab" data-view="URBY" aria-selected="true"><span data-logo="URBY" data-size="tab"></span><span class="tab-sub">Estatus de producción</span></button>
+    <button role="tab" data-view="CONVEY" aria-selected="false"><span data-logo="CONVEY" data-size="tab"></span><span class="tab-sub">Resumen mensual</span></button>
+  </nav>
+</header>
+
+<div id="screen" class="screen"><div class="box"><div class="loader"></div><h2>Cargando informe…</h2><p>Leyendo el Excel de producción en SharePoint.</p></div></div>
+
+<main id="viewUrby" hidden>
+  <div class="meta" id="metaUrby"></div>
+  <section aria-labelledby="h-sop">
+    <div class="sec-head" style="margin-top:12px"><h2 id="h-sop">Indicadores S&amp;OP del mes</h2><p>Valores de la hoja STATUS.</p></div>
+    <div class="pillars" id="pillars"></div>
+  </section>
+  <section aria-labelledby="h-lines">
+    <div class="sec-head"><h2 id="h-lines">Estado por línea de producción</h2><p>Haz clic en una línea para ver su detalle.</p></div>
+    <div class="card"><div class="tbl-wrap"><table id="lineTable"></table></div></div>
+    <div class="grid2">
+      <div class="card"><h3>Capacidad disponible por línea</h3><p class="hint">Porcentaje de horas del mes que quedan libres después de la última fecha programada.</p><div class="chart-box" style="height:320px"><canvas id="cCap"></canvas></div></div>
+      <div class="card"><h3>OEE por línea</h3><p class="hint">Promedio del mes; las líneas sin dato no aparecen.</p><div class="chart-box" style="height:320px"><canvas id="cOee"></canvas></div></div>
+    </div>
+  </section>
+  <section aria-labelledby="h-otros">
+    <div class="sec-head"><h2 id="h-otros">Personal, entregas y notas</h2></div>
+    <div class="grid3">
+      <div class="card"><h3>Otros puestos y labores no directas</h3><p class="hint">Personas asignadas fuera de las líneas.</p><ul class="list" id="otros"></ul></div>
+      <div class="card"><h3>Días de entrega de pedidos</h3><p class="hint">Tiempo de entrega de referencia.</p><div class="big3" id="entrega"></div></div>
+      <div class="card"><h3>Notas del programa</h3><p class="hint">Escritas por el ingeniero de producción.</p><ul class="notes" id="notas"></ul></div>
+    </div>
+  </section>
+  <section aria-labelledby="h-month">
+    <div class="sec-head"><h2 id="h-month">Evolución mes a mes</h2><p>Hoja "resumen indicadores". Haz clic en un mes para ver su resumen.</p></div>
+    <div class="grid3">
+      <div class="card"><h3>Kilos: presupuesto, programado y entregado</h3><div class="chart-box"><canvas id="mKg"></canvas></div></div>
+      <div class="card"><h3>Pedidos, cumplimiento y OTIF</h3><div class="chart-box"><canvas id="mPed"></canvas></div></div>
+      <div class="card"><h3>Personal: presupuestado frente a real</h3><div class="chart-box"><canvas id="mHc"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:14px"><h3>Resumen de indicadores</h3><p class="hint">El mes resaltado es el mes del reporte en STATUS.</p><div class="tbl-wrap"><table class="mtable" id="mTable"></table></div></div>
+  </section>
+  <p class="foot" id="footUrby"></p>
+</main>
+
+<main id="viewConvey" hidden>
+  <div class="meta" id="metaConvey"></div>
+  <div class="banner" style="margin-top:10px"><div><b>Convey · resumen mensual</b><span>El Excel solo trae para Convey el resumen de la hoja "resumen indicadores": kilos, pedidos, OTIF y días de retraso por mes. El detalle por línea de la hoja STATUS es solo de Urby.</span></div></div>
+  <div class="sec-head"><h2>Indicadores del mes</h2></div>
+  <div class="pillars" id="cPillars"></div>
+  <div class="sec-head"><h2>Evolución mes a mes</h2></div>
+  <div class="grid2" style="margin-top:0">
+    <div class="card"><h3>Kilos: presupuesto, programado y entregado</h3><div class="chart-box"><canvas id="cKg"></canvas></div></div>
+    <div class="card"><h3>Pedidos, cumplimiento y OTIF</h3><div class="chart-box"><canvas id="cPed"></canvas></div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Resumen de indicadores Convey</h3><div class="tbl-wrap"><table class="mtable" id="cTable"></table></div></div>
+</main>
+
+<div class="toast" id="toast"></div>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drTitle">
+  <div class="dr-head"><div><h2 id="drTitle"></h2><p id="drSub"></p></div><button class="dr-close" id="drClose" type="button">Cerrar</button></div>
+  <div class="dr-body" id="drBody"></div>
+</aside>
+
+<script>
+/* ===================== utilidades ===================== */
+const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MES3=MESES.map(m=>m.slice(0,3));
+const SCOPES=['User.Read','Files.Read.All'];
+const fmt=new Intl.NumberFormat('es-CO',{maximumFractionDigits:0});
+const fmt1=new Intl.NumberFormat('es-CO',{maximumFractionDigits:1});
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const vacio=v=>v==null||v===''||(typeof v==='string'&&!v.trim());
+const esErr=v=>typeof v==='string'&&/^#(N\/A|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|NULL!)/.test(v.trim());
+function num(v){ if(typeof v==='number') return isFinite(v)?v:null; if(vacio(v)||esErr(v)) return null;
+  const s=String(v).trim(); if(/[a-z]/i.test(s.replace(/^\$/,''))) return null;
+  const n=Number(s.replace(/[$\s]/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.')); return isFinite(n)?n:null; }
+function txt(v){ if(vacio(v)||esErr(v)) return null; return String(v).replace(/ /g,' ').trim()||null; }
+function fechaX(v){ if(typeof v==='number'&&v>20000) return new Date(Math.round((v-25569)*864e5));
+  if(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}/.test(v)) return new Date(v.slice(0,10)+'T00:00:00Z'); return null; }
+const fd=d=>d?d.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'}):'—';
+const pct=v=>v==null?'—':fmt1.format(v*100)+'%';
+const kg=v=>v==null?'—':fmt.format(v);
+const money=v=>v==null?'—':'$ '+fmt.format(v);
+const d1=v=>v==null?'—':fmt1.format(v);
+const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():s;
+const nice=p=>String(p).replace(/^PRENSA /i,'Prensa ').replace(/^MEC_CNC$/i,'Mec. CNC').replace(/^MEC_TALLER$/i,'Mec. taller').replace(/^EXTRUDER$/i,'Extruder').replace(/^LIJADORA$/i,'Lijadora');
+const norm=s=>String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+const col=n=>getComputedStyle(document.documentElement).getPropertyValue('--'+n).trim();
+function toast(m,ms=4500){ const t=$('toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast.t); toast.t=setTimeout(()=>t.style.display='none',ms); }
+
+/* ===================== acceso a SharePoint (MSAL + Microsoft Graph) ===================== */
+let app=null, cuenta=null;
+function configurado(){ return !/^PEGAR/.test(CONFIG.clientId)&&!/^PEGAR/.test(CONFIG.tenantId)&&/^https:\/\//.test(CONFIG.linkExcel); }
+function cargarScript(src){ return new Promise((ok,ko)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=ko; document.head.appendChild(s); }); }
+async function cargarMSAL(){
+  if(window.msal) return;
+  try{ await cargarScript('https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js'); }
+  catch(_){ await cargarScript('https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js'); }
+}
+async function token(){
+  try{ return (await app.acquireTokenSilent({scopes:SCOPES,account:cuenta})).accessToken; }
+  catch(e){
+    if(e instanceof msal.InteractionRequiredAuthError||/interaction_required|consent_required|login_required/.test(e.errorCode||'')){
+      await app.acquireTokenRedirect({scopes:SCOPES,account:cuenta}); return new Promise(()=>{});
+    }
+    throw e;
+  }
+}
+const esperar=ms=>new Promise(r=>setTimeout(r,ms));
+async function graph(path){
+  const t=await token();
+  for(let i=0;i<3;i++){
+    const r=await fetch('https://graph.microsoft.com/v1.0'+path,{headers:{Authorization:'Bearer '+t}});
+    if(r.ok) return r.json();
+    if((r.status===429||r.status>=500)&&i<2){ await esperar(1500*(i+1)); continue; }
+    let j={}; try{ j=await r.json(); }catch(_){}
+    const err=new Error(j.error?.message||r.statusText); err.status=r.status; err.code=j.error?.code; err.path=path; throw err;
+  }
+}
+function shareId(url){ const b=btoa(unescape(encodeURIComponent(url.trim()))); return 'u!'+b.replace(/=+$/,'').replace(/\//g,'_').replace(/\+/g,'-'); }
+async function leerRango(base,r){
+  try{ return (await graph(`${base}/names('${encodeURIComponent(r.nombre)}')/range?$select=values`)).values; }
+  catch(e){
+    if(e.status!==404&&e.status!==400) throw e;
+    try{ return (await graph(`${base}/worksheets('${encodeURIComponent(r.hoja)}')/range(address='${r.dir}')?$select=values`)).values; }
+    catch(e2){ if(e2.status===404||e2.status===400){ e2.rango=`${r.hoja}!${r.dir}`; } throw e2; }
+  }
+}
+async function leerExcel(){
+  const item=await graph(`/shares/${shareId(CONFIG.linkExcel)}/driveItem?$select=id,name,webUrl,lastModifiedDateTime,lastModifiedBy,parentReference`);
+  const base=`/drives/${item.parentReference.driveId}/items/${item.id}/workbook`;
+  const raw={};
+  for(const [k,r] of Object.entries(CONFIG.rangos)) raw[k]=await leerRango(base,r);  // en serie: evita bloqueos del libro
+  return { raw, meta:{ nombre:item.name, url:item.webUrl, modificado:item.lastModifiedDateTime, por:item.lastModifiedBy?.user?.displayName } };
+}
+
+/* ===================== modelo: convierte los rangos en datos del tablero ===================== */
+function modelo(raw){
+  const k=(raw.kpis||[[]])[0]||[], a=raw.aux||[[],[],[]];
+  const m={
+    mes:num(k[0]), mesNombre:txt(k[1]),
+    total:num(k[2]), entregados:num(k[3]), pCump:num(k[4]), otif:num(k[5]), pOtif:num(k[6]), noOtif:num(k[7]),
+    kgProg:num(k[8]), kgEnt:num(k[9]), cnc:num(k[10]), capInst:num(k[11]), capUtil:num(k[12]),
+    personal:num(k[13]), ausentismo:num(k[14]), oee:num(k[18]),
+    accidente:fechaX(k[23]), diasDesde:num(k[24]), obsAccidente:txt(k[25]),
+    proy:[0,1].map(i=>({mes:txt((a[i]||[])[7]), kg:num((a[i]||[])[8])})).filter(p=>p.mes),
+    hoyRef:fechaX((a[0]||[])[16]), finMes:fechaX((a[1]||[])[11]), finProx:fechaX((a[1]||[])[12])
+  };
+  m.lineas=(raw.lineas||[]).filter(r=>txt(r[0])).map(r=>({
+    linea:txt(r[0]), total:num(r[1]), cumplidos:num(r[2]), pCump:num(r[3]), otif:num(r[4]), pOtif:num(r[5]),
+    desv:num(r[6]), estado:txt(r[7]), obs:txt(r[8]), fechaMax:fechaX(r[9]), diasResto:num(r[10]), diasProx:num(r[11]),
+    turnos:num(r[12]), personal:num(r[13]), hLibresMes:num(r[14]), hRestMes:num(r[15]), hTotalMes:num(r[16]),
+    libreMes:num(r[17]), estadoMes:txt(r[18]), oee:num(r[19]), hLibresProx:num(r[20]), hTotalProx:num(r[21]),
+    libreProx:num(r[22]), estadoProx:txt(r[23]), obs2:txt(r[24])
+  }));
+  m.otros=(raw.otros||[]).filter(r=>txt(r[0])).map(r=>({label:txt(r[0]), obs:txt(r[8]), personas:num(r[13])}));
+  m.notas=(raw.notas||[]).map(r=>txt(r[0])).filter(s=>s&&!/^notas:?$/i.test(s));
+  m.entrega=(raw.entrega||[]).filter(r=>txt(r[0])).map(r=>({label:txt(r[0]), val:num(r[1])}));
+  m.res=resumen(raw.resumen||[]);
+  if(!m.mes&&m.mesNombre){ const i=MESES.findIndex(x=>norm(x)===norm(m.mesNombre)); if(i>=0) m.mes=i+1; }
+  return m;
+}
+/* Lee la hoja "resumen indicadores" por etiquetas (columna B = sección, C = indicador) */
+function resumen(rows){
+  const out={}; let uen=null, sec='', prev='', year=null;
+  rows.forEach(r=>{
+    const A=norm(r[0]), B=norm(r[1]), C=norm(r[2]);
+    if(A==='urby'||A==='convey'){ uen=A.toUpperCase(); out[uen]={}; sec=''; prev='';
+      const d=fechaX(r[3]); if(d&&!year) year=d.getUTCFullYear(); return; }
+    if(!uen) return;
+    const vals=[]; for(let c=3;c<=14;c++) vals.push(r[c]);
+    const hay=vals.some(v=>!vacio(v));
+    let label;
+    if(C&&B){ sec=B; label=C; } else if(C){ label=C; } else if(B){ label=B; } else { if(!hay) return; label=prev+'_2'; }
+    if(label==='%') label=prev+'%'; else prev=label;
+    const key=sec+'|'+label; if(!out[uen][key]) out[uen][key]=vals;
+    if(!out[uen]['*|'+label]) out[uen]['*|'+label]=vals;
+  });
+  const g=(u,sec,label)=>{ const b=out[u]||{}; return b[sec+'|'+label]||b['*|'+label]||Array(12).fill(null); };
+  const N=a=>a.map(num), T=a=>a.map(v=>num(v)??txt(v));
+  return { year,
+    URBY:{ kgPres:N(g('URBY','kilos','presupuesto')), kgProg:N(g('URBY','kilos','programado')), kgEnt:N(g('URBY','kilos','entregado')),
+      hcPres:N(g('URBY','head count','personal presupuestado')), hcReal:T(g('URBY','head count','personal real')),
+      pedProg:N(g('URBY','pedidos','programado')), pedEnt:N(g('URBY','pedidos','entregados')), pCump:N(g('URBY','pedidos','entregados%')),
+      otif:N(g('URBY','pedidos','otif')), pOtif:N(g('URBY','pedidos','otif%')), acc:N(g('URBY','seguridad','accidentes')),
+      cnc:N(g('URBY','seguridad','costos de no calidad')), otifCorr:N(g('URBY','pedidos','otif corregido')), pOtifCorr:N(g('URBY','pedidos','otif corregido_2')) },
+    CONVEY:{ kgPres:N(g('CONVEY','kilos','presupuesto')), kgProg:N(g('CONVEY','kilos','programado')), kgEnt:N(g('CONVEY','kilos','entregado')),
+      pedProg:N(g('CONVEY','pedidos','programado')), pedEnt:N(g('CONVEY','pedidos','entregados')), pCump:N(g('CONVEY','pedidos','entregados%')),
+      otif:N(g('CONVEY','pedidos','otif')), pOtif:N(g('CONVEY','pedidos','otif%')),
+      retMin:N(g('CONVEY','dias retraso','minimo')), retMax:N(g('CONVEY','dias retraso','maximo')), retProm:N(g('CONVEY','dias retraso','promedio')) }
+  };
+}
+
+/* ===================== estado y pintado ===================== */
+let M=null, META=null, vista='URBY', ultimaLectura=null, cargando=false;
+const charts={};
+function mk(id,cfg){ if(charts[id]) charts[id].destroy(); const el=$(id); if(!el) return; charts[id]=new Chart(el,cfg); }
+Chart.defaults.font.family='Montserrat, sans-serif'; Chart.defaults.font.size=11; Chart.defaults.color='#5B6778';
+Chart.defaults.plugins.legend.labels.boxWidth=12;
+if(matchMedia('(prefers-reduced-motion: reduce)').matches) Chart.defaults.animation=false;
+
+const UEN={ URBY:{name:'Urby',color:'#44B3E1',logo:'https://grupoy.com.co/wp-content/uploads/2024/05/PW-Logo_Mesa-de-trabajo-1-copia-2.png'},
+            CONVEY:{name:'Convey',color:'#F8AB1D',logo:'https://grupoy.com.co/wp-content/uploads/2024/05/PW-Logo_Mesa-de-trabajo-1-copia.png'} };
+function logoHTML(u,size){ const L=UEN[u]; return `<span class="logo-plate logo-${size}"><img src="${L.logo}" alt="${L.name}" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'${L.name}',style:'color:${L.color}'}))"></span>`; }
+document.querySelectorAll('[data-logo]').forEach(el=>el.outerHTML=logoHTML(el.dataset.logo,el.dataset.size));
+
+const ICON={
+  D:'<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  Q:'<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>',
+  P:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  C:'<circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/>',
+  S:'<path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/>'
+};
+const ico=L=>`<span class="ico ico-${L}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[L]}</svg></span>`;
+const kpi=(v,l,s='',empty=false)=>`<div class="kpi ${empty?'empty':''}"><span class="v">${v}</span><span class="l">${l}</span>${s}</div>`;
+const manualTag='<span class="tag">Sin registrar</span>';
+function vsAnt(cur,prev,isPct){ if(cur==null||prev==null) return ''; const d=cur-prev; if(Math.abs(d)<1e-9) return '<span class="s mid">= mes anterior</span>';
+  const t=isPct?fmt1.format(Math.abs(d)*100)+' pts':fmt.format(Math.abs(d)); return `<span class="s ${isPct?(d>0?'up':'down'):'mid'}">${d>0?'▲':'▼'} ${t} vs ${MES3[M.mes-2]||'ant.'}</span>`; }
+function bar(v,good=true){ if(v==null) return '—'; const c=good?(v>=CONFIG.metaOTIF?col('ok'):v>=.75?col('warn'):col('late')):(v<=0?col('late'):v<.3?col('warn'):col('ok'));
+  return `<span class="bar"><span>${pct(v)}</span><span class="track"><i style="width:${Math.max(0,Math.min(v,1))*100}%;background:${c}"></i></span></span>`; }
+function estadoPill(s,d){ if(!s) return '—'; const n=norm(s); const cls=n.startsWith('retraso')?'late':n.startsWith('adelant')?'blue':'ok';
+  return `<span class="pill ${cls}">${esc(s)}${d?` · ${d>0?'+':''}${fmt1.format(d)} d`:''}</span>`; }
+function capPill(estado,v){ if(!estado&&v==null) return '—'; const n=norm(estado);
+  const cls=n.startsWith('ocupado')?'late':n.startsWith('totalmente')?'blue':'ok';
+  return `<span class="pill ${cls}">${esc(estado||'')}${v!=null&&!n.startsWith('totalmente')&&!n.startsWith('ocupado')?' '+pct(v):''}</span>`; }
+
+function metaChips(){
+  const mod=META?.modificado?new Date(META.modificado):null;
+  return `<span class="chip mes">Mes del reporte: <b>${esc(M.mesNombre?cap(M.mesNombre):(MESES[M.mes-1]||'—'))} ${M.res.year||''}</b></span>
+    <span class="chip">Excel actualizado: <b>${mod?mod.toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—'}</b>${META?.por?` · ${esc(META.por)}`:''}</span>
+    <span class="chip">Consultado: <b>${ultimaLectura?ultimaLectura.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—'}</b></span>
+    ${M.hoyRef&&Math.abs(Date.now()-M.hoyRef)>3*864e5?`<span class="chip warn">La celda "hoy" del Excel dice ${fd(M.hoyRef)}: la capacidad se calcula desde esa fecha</span>`:''}
+    ${DEMO?'<span class="chip warn">Vista previa con datos de ejemplo</span>':''}`;
+}
+
+function pintarUrby(){
+  const R=M.res.URBY, i=(M.mes||1)-1, prev=i>0?i-1:null, P=k=>prev==null?null:R[k][prev];
+  $('metaUrby').innerHTML=metaChips();
+  const ring=M.pOtif==null?'':`<span class="ring"><i style="width:${Math.min(M.pOtif,1)*100}%;background:${M.pOtif>=CONFIG.metaOTIF?col('ok'):col('late')}"></i><b style="left:${CONFIG.metaOTIF*100}%"></b></span>`;
+  const pres=R.kgPres[i];
+  const proy=M.proy.map(p=>`${cap(p.mes)}: ${kg(p.kg)} kg`).join(' · ');
+  $('pillars').innerHTML=`
+  <div class="pillar d"><div class="pillar-head"><span class="letter">D</span>${ico('D')}<span>Delivery · entregas</span></div><div class="kpis">
+    ${kpi(kg(M.total),'Total pedidos',vsAnt(M.total,P('pedProg')))}
+    ${kpi(kg(M.entregados),'Pedidos entregados')}
+    ${kpi(pct(M.pCump),'% cumplimiento global',vsAnt(M.pCump,P('pCump'),true))}
+    ${kpi(kg(M.otif),'Pedidos entregados OTIF')}
+    ${kpi(pct(M.pOtif),'% OTIF · meta '+pct(CONFIG.metaOTIF),ring)}
+    ${kpi(kg(M.noOtif),'Pedidos no OTIF')}
+    ${kpi(kg(M.kgProg),'Kilos programa',pres?`<span class="s mid">Presupuesto ${kg(pres)}</span>`:'')}
+    ${kpi(kg(M.kgEnt),'Kilos entregados',pres&&M.kgEnt!=null?`<span class="s ${M.kgEnt>=pres?'up':'down'}">${pct(M.kgEnt/pres)} del presupuesto</span>`:'')}
+  </div></div>
+  <div class="pillar"><div class="pillar-head"><span class="letter">Q</span>${ico('Q')}<span>Quality</span></div><div class="kpis">
+    ${kpi(M.cnc!=null?money(M.cnc):'—','Costos de no calidad',M.cnc==null?manualTag:'',M.cnc==null)}
+  </div></div>
+  <div class="pillar"><div class="pillar-head"><span class="letter">P</span>${ico('P')}<span>People</span></div><div class="kpis">
+    ${kpi(kg(M.personal),'Personal en la línea',R.hcPres[i]!=null?`<span class="s mid">Presupuesto ${kg(R.hcPres[i])}</span>`:'')}
+    ${kpi(M.ausentismo!=null?kg(M.ausentismo):'—','Días de ausentismo',M.ausentismo==null?manualTag:'',M.ausentismo==null)}
+  </div></div>
+  <div class="pillar"><div class="pillar-head"><span class="letter">C</span>${ico('C')}<span>Cost · eficiencia</span></div><div class="kpis">
+    ${kpi(pct(M.oee),'OEE promedio')}
+    ${kpi(kg(M.capInst),'Capacidad instalada (kg)')}
+    ${kpi(pct(M.capUtil),'Capacidad utilizada',proy?`<span class="s mid">${esc(proy)}</span>`:'')}
+  </div></div>
+  <div class="pillar"><div class="pillar-head"><span class="letter">S</span>${ico('S')}<span>Safety</span></div><div class="kpis">
+    ${kpi(M.accidente?M.accidente.toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'}):'—','Último accidente',M.obsAccidente?`<span class="s mid">${esc(M.obsAccidente)}</span>`:manualTag,!M.accidente)}
+    ${kpi(M.diasDesde!=null?kg(M.diasDesde):'—','Días desde el último accidente')}
+  </div></div>`;
+
+  const L=M.lineas, hoy=new Date();
+  const sum=f=>L.reduce((s,x)=>s+(f(x)||0),0);
+  const T={total:sum(x=>x.total),cumplidos:sum(x=>x.cumplidos),otif:sum(x=>x.otif),turnos:sum(x=>x.turnos),personal:sum(x=>x.personal)};
+  $('lineTable').innerHTML=`<thead><tr><th>Línea de producción</th><th>Pedidos totales</th><th>Pedidos cumplidos</th><th>% cumplimiento</th><th>Pedidos OTIF</th><th>% OTIF</th><th>Estado actual</th><th>Fecha máx. en programa</th><th>Turnos</th><th>Personal</th><th>OEE</th><th>Capacidad ${MES3[i]||'mes'}</th><th>Capacidad ${MES3[(i+1)%12]}</th><th>Observaciones</th></tr></thead>
+  <tbody>${L.map((x,j)=>`<tr class="click" tabindex="0" data-j="${j}">
+    <td>${esc(nice(x.linea))}</td><td>${kg(x.total)}</td><td>${kg(x.cumplidos)}</td><td>${x.total?bar(x.pCump):'<span class="pill off">Sin pedidos</span>'}</td>
+    <td>${kg(x.otif)}</td><td>${x.total?bar(x.pOtif):'—'}</td><td>${estadoPill(x.estado,x.desv)}</td>
+    <td class="${x.fechaMax&&x.fechaMax<hoy?'datebad':''}">${x.fechaMax?fd(x.fechaMax):'—'}${x.fechaMax&&x.fechaMax<hoy?'<br><small style="font-weight:500">sin programa vigente</small>':''}</td>
+    <td>${d1(x.turnos)}</td><td>${x.personal!=null?d1(x.personal):'<span title="Celda vacía o combinada en el Excel">—</span>'}</td>
+    <td>${x.oee!=null?pct(x.oee):'<span class="pill off">Sin dato</span>'}</td>
+    <td>${capPill(x.estadoMes,x.libreMes)}</td><td>${capPill(x.estadoProx,x.libreProx)}</td>
+    <td class="wrap">${esc([x.obs,x.obs2].filter(Boolean).join(' · '))}</td></tr>`).join('')}
+    <tr class="total"><td>Total líneas</td><td>${kg(T.total)}</td><td>${kg(T.cumplidos)}</td><td>${T.total?bar(T.cumplidos/T.total):'—'}</td><td>${kg(T.otif)}</td><td>${T.cumplidos?bar(T.otif/T.cumplidos):'—'}</td><td></td><td></td><td>${d1(T.turnos)}</td><td>${d1(T.personal)}</td><td>${pct(M.oee)}</td><td></td><td></td><td></td></tr></tbody>`;
+  $('lineTable').querySelectorAll('tr.click').forEach(tr=>{ const go=()=>abrirLinea(L[+tr.dataset.j]); tr.onclick=go; tr.onkeydown=e=>{ if(e.key==='Enter') go(); }; });
+
+  const lab=L.map(x=>nice(x.linea));
+  mk('cCap',{type:'bar',data:{labels:lab,datasets:[
+    {label:MESES[i]||'Mes actual',data:L.map(x=>x.libreMes==null?null:+(x.libreMes*100).toFixed(1)),backgroundColor:col('brand-ink'),borderRadius:3},
+    {label:MESES[(i+1)%12],data:L.map(x=>x.libreProx==null?null:+(x.libreProx*100).toFixed(1)),backgroundColor:col('brand-light'),borderRadius:3}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,scales:{x:{min:0,max:100,ticks:{callback:v=>v+'%'},grid:{color:'#EEF1F5'}},y:{grid:{display:false}}},
+      plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw}% libre`}}}}});
+  const O=L.filter(x=>x.oee!=null);
+  mk('cOee',{type:'bar',data:{labels:O.map(x=>nice(x.linea)),datasets:[{label:'OEE',data:O.map(x=>+(x.oee*100).toFixed(1)),backgroundColor:O.map(x=>x.oee>1?col('warn'):x.oee>=.85?col('ok'):x.oee>=.6?col('brand'):col('late')),borderRadius:3}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`OEE: ${c.raw}%${c.raw>100?' (revisar dato)':''}`}}},scales:{x:{min:0,suggestedMax:100,ticks:{callback:v=>v+'%'},grid:{color:'#EEF1F5'}},y:{grid:{display:false}}}}});
+
+  $('otros').innerHTML=M.otros.length?M.otros.map(o=>`<li><div>${esc(cap(o.label))}${o.obs?`<br><span>${esc(o.obs)}</span>`:''}</div><b>${o.personas!=null?d1(o.personas):'—'}</b></li>`).join('')
+    +`<li><div><b>Total</b></div><b>${d1(M.otros.reduce((s,o)=>s+(o.personas||0),0))}</b></li>`:'<li><span>Sin registros</span></li>';
+  $('entrega').innerHTML=M.entrega.length?M.entrega.map(e=>`<div><b>${d1(e.val)}</b><span>${esc(e.label)}</span></div>`).join(''):'<div><span>Sin registros</span></div>';
+  $('notas').innerHTML=M.notas.length?M.notas.map(n=>`<li>${esc(n.replace(/^\*+\s*/,''))}</li>`).join(''):'<li style="list-style:none;color:var(--muted)">Sin notas</li>';
+
+  pintarEvolucion();
+  $('footUrby').innerHTML=`Fuente: ${esc(META?.nombre||'Excel de producción')}, hojas "STATUS" y "resumen indicadores".
+  Los cálculos los hace el Excel: % cumplimiento = entregados ÷ total; % OTIF = OTIF ÷ entregados; estado de la línea según los días de desfase de los pedidos pendientes;
+  capacidad disponible = horas libres después de la última fecha de fin de vulcanizado (8 h × turnos × días hábiles). Se actualiza cada ${CONFIG.refrescarMin} minutos.`;
+}
+
+function serie(arr,fn=v=>v){ return arr.map(v=>v==null?null:fn(v)); }
+function clickMes(e,els){ if(els.length) abrirMes(els[0].index); }
+function pintarEvolucion(){
+  const R=M.res.URBY, cur=(M.mes||0)-1, hl=i=>i===cur;
+  mk('mKg',{data:{labels:MES3,datasets:[
+    {type:'bar',label:'Programado',data:serie(R.kgProg,Math.round),backgroundColor:MES3.map((_,i)=>hl(i)?col('brand-ink'):col('brand-light')),borderRadius:3,order:2},
+    {type:'bar',label:'Entregado',data:serie(R.kgEnt,Math.round),backgroundColor:MES3.map((_,i)=>hl(i)?col('brand'):col('brand-pale')),borderRadius:3,order:2},
+    {type:'line',label:'Presupuesto',data:serie(R.kgPres,Math.round),borderColor:col('contrast'),backgroundColor:col('contrast'),borderWidth:3,pointRadius:3,cubicInterpolationMode:'monotone',order:1}]},
+    options:{maintainAspectRatio:false,onClick:clickMes,scales:{y:{ticks:{callback:v=>fmt.format(v)},grid:{color:'#EEF1F5'}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${kg(c.raw)} kg`}}}}});
+  mk('mPed',{data:{labels:MES3,datasets:[
+    {type:'bar',label:'Pedidos programados',data:R.pedProg,backgroundColor:MES3.map((_,i)=>hl(i)?col('brand-ink'):col('brand-pale')),borderRadius:3,yAxisID:'y',order:3},
+    {type:'line',label:'% cumplimiento',data:serie(R.pCump,v=>+(v*100).toFixed(1)),borderColor:col('brand'),backgroundColor:col('brand'),yAxisID:'y1',cubicInterpolationMode:'monotone',pointRadius:3,order:1},
+    {type:'line',label:'% OTIF',data:serie(R.pOtif,v=>+(v*100).toFixed(1)),borderColor:col('ok'),backgroundColor:col('ok'),yAxisID:'y1',cubicInterpolationMode:'monotone',pointRadius:3,order:1},
+    {type:'line',label:'Meta OTIF',data:MES3.map(()=>CONFIG.metaOTIF*100),borderColor:col('late'),borderDash:[5,4],borderWidth:1.5,pointRadius:0,yAxisID:'y1',order:0}]},
+    options:{maintainAspectRatio:false,onClick:clickMes,datasets:{line:{clip:false}},scales:{y:{grid:{color:'#EEF1F5'},title:{display:true,text:'Pedidos'}},y1:{position:'right',min:0,max:100,grid:{display:false},ticks:{callback:v=>v+'%'}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
+  const hcR=R.hcReal.map(v=>typeof v==='number'?v:(typeof v==='string'?+((v.match(/(\d+)\s*$/)||[])[1])||null:null));
+  mk('mHc',{type:'bar',data:{labels:MES3,datasets:[
+    {label:'Presupuestado',data:R.hcPres,backgroundColor:col('brand-pale'),borderRadius:3},
+    {label:'Real',data:hcR,backgroundColor:MES3.map((_,i)=>hl(i)?col('brand-ink'):col('brand')),borderRadius:3}]},
+    options:{maintainAspectRatio:false,onClick:clickMes,scales:{y:{grid:{color:'#EEF1F5'}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'},
+      tooltip:{callbacks:{label:c=>{ const r=R.hcReal[c.dataIndex]; return c.datasetIndex===1&&typeof r==='string'?`Real: ${r}`:`${c.dataset.label}: ${c.raw??'—'}`; }}}}}});
+
+  const th=MES3.map((x,i)=>`<th class="${hl(i)?'cur':''}">${x}</th>`).join('');
+  const row=(lbl,arr,f)=>`<tr><td class="sub">${lbl}</td>${arr.map((v,i)=>`<td class="${hl(i)?'cur':i>cur?'fut':''}">${v==null||v===''?'—':f(v,i)}</td>`).join('')}</tr>`;
+  const grp=t=>`<tr class="grp"><td colspan="13">${t}</td></tr>`;
+  const ok=v=>`<span style="color:${v>=CONFIG.metaOTIF?col('ok'):col('late')}">${pct(v)}</span>`;
+  $('mTable').innerHTML=`<thead><tr><th>Indicador</th>${th}</tr></thead><tbody>`
+    +grp('Kilos')+row('Presupuesto',R.kgPres,kg)+row('Programado',R.kgProg,kg)+row('Entregado',R.kgEnt,kg)
+    +row('% entregado vs presupuesto',R.kgEnt.map((v,i)=>v!=null&&R.kgPres[i]?v/R.kgPres[i]:null),pct)
+    +grp('Pedidos')+row('Programados',R.pedProg,kg)+row('Entregados',R.pedEnt,kg)+row('% cumplimiento',R.pCump,ok)+row('OTIF',R.otif,kg)+row('% OTIF',R.pOtif,ok)
+    +(R.otifCorr.some(v=>v!=null)?row('OTIF corregido*',R.otifCorr.map((v,i)=>v==null?null:`${v} · ${pct(R.pOtifCorr[i])}`),v=>v):'')
+    +grp('Personal y seguridad')+row('Personal presupuestado',R.hcPres,kg)+row('Personal real',R.hcReal,v=>typeof v==='number'?kg(v):esc(v))+row('Accidentes',R.acc,kg)+row('Costos de no calidad',R.cnc,v=>'$ '+fmt1.format(v/1e6)+' M')
+    +`</tbody>`;
+}
+
+function pintarConvey(){
+  const R=M.res.CONVEY, i=(M.mes||1)-1, cur=i, hl=k=>k===cur;
+  $('metaConvey').innerHTML=metaChips();
+  const pres=R.kgPres[i];
+  $('cPillars').innerHTML=`
+  <div class="pillar d"><div class="pillar-head"><span class="letter">D</span>${ico('D')}<span>Delivery · ${MESES[i]}</span></div><div class="kpis">
+    ${kpi(kg(R.pedProg[i]),'Pedidos programados')}
+    ${kpi(kg(R.pedEnt[i]),'Pedidos entregados')}
+    ${kpi(pct(R.pCump[i]),'% cumplimiento')}
+    ${kpi(kg(R.otif[i]),'Pedidos OTIF')}
+    ${kpi(pct(R.pOtif[i]),'% OTIF · meta '+pct(CONFIG.metaOTIF))}
+    ${kpi(kg(R.kgPres[i]),'Kilos presupuesto')}
+    ${kpi(kg(R.kgProg[i]),'Kilos programados')}
+    ${kpi(kg(R.kgEnt[i]),'Kilos entregados',pres&&R.kgEnt[i]!=null?`<span class="s ${R.kgEnt[i]>=pres?'up':'down'}">${pct(R.kgEnt[i]/pres)} del presupuesto</span>`:'')}
+  </div></div>
+  <div class="pillar" style="grid-column:span 2"><div class="pillar-head"><span class="letter">T</span>${ico('C')}<span>Días de retraso de los pedidos no OTIF</span></div><div class="kpis">
+    ${kpi(d1(R.retMin[i]),'Mínimo')}${kpi(d1(R.retProm[i]),'Promedio')}${kpi(d1(R.retMax[i]),'Máximo')}
+  </div></div>`;
+  mk('cKg',{data:{labels:MES3,datasets:[
+    {type:'bar',label:'Programado',data:serie(R.kgProg,Math.round),backgroundColor:MES3.map((_,k)=>hl(k)?col('brand-ink'):col('brand-light')),borderRadius:3,order:2},
+    {type:'bar',label:'Entregado',data:serie(R.kgEnt,Math.round),backgroundColor:MES3.map((_,k)=>hl(k)?col('brand'):col('brand-pale')),borderRadius:3,order:2},
+    {type:'line',label:'Presupuesto',data:serie(R.kgPres,Math.round),borderColor:col('contrast'),backgroundColor:col('contrast'),borderWidth:3,pointRadius:3,order:1}]},
+    options:{maintainAspectRatio:false,scales:{y:{ticks:{callback:v=>fmt.format(v)},grid:{color:'#EEF1F5'}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
+  mk('cPed',{data:{labels:MES3,datasets:[
+    {type:'bar',label:'Pedidos programados',data:R.pedProg,backgroundColor:MES3.map((_,k)=>hl(k)?col('brand-ink'):col('brand-pale')),borderRadius:3,yAxisID:'y',order:3},
+    {type:'line',label:'% cumplimiento',data:serie(R.pCump,v=>+(v*100).toFixed(1)),borderColor:col('navy'),backgroundColor:col('navy'),yAxisID:'y1',pointRadius:3,order:1},
+    {type:'line',label:'% OTIF',data:serie(R.pOtif,v=>+(v*100).toFixed(1)),borderColor:col('ok'),backgroundColor:col('ok'),yAxisID:'y1',pointRadius:3,order:1},
+    {type:'line',label:'Meta OTIF',data:MES3.map(()=>CONFIG.metaOTIF*100),borderColor:col('late'),borderDash:[5,4],borderWidth:1.5,pointRadius:0,yAxisID:'y1',order:0}]},
+    options:{maintainAspectRatio:false,datasets:{line:{clip:false}},scales:{y:{grid:{color:'#EEF1F5'}},y1:{position:'right',min:0,max:100,grid:{display:false},ticks:{callback:v=>v+'%'}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
+  const th=MES3.map((x,k)=>`<th class="${hl(k)?'cur':''}">${x}</th>`).join('');
+  const row=(lbl,arr,f)=>`<tr><td class="sub">${lbl}</td>${arr.map((v,k)=>`<td class="${hl(k)?'cur':''}">${v==null?'—':f(v)}</td>`).join('')}</tr>`;
+  const grp=t=>`<tr class="grp"><td colspan="13">${t}</td></tr>`;
+  $('cTable').innerHTML=`<thead><tr><th>Indicador</th>${th}</tr></thead><tbody>`
+    +grp('Kilos')+row('Presupuesto',R.kgPres,kg)+row('Programado',R.kgProg,kg)+row('Entregado',R.kgEnt,kg)
+    +grp('Pedidos')+row('Programados',R.pedProg,kg)+row('Entregados',R.pedEnt,kg)+row('% cumplimiento',R.pCump,pct)+row('OTIF',R.otif,kg)+row('% OTIF',R.pOtif,pct)
+    +grp('Días de retraso')+row('Mínimo',R.retMin,d1)+row('Promedio',R.retProm,d1)+row('Máximo',R.retMax,d1)+`</tbody>`;
+}
+
+/* ===================== paneles de detalle ===================== */
+function abrir(t,s,html,after){ $('drTitle').textContent=t; $('drSub').textContent=s; $('drBody').innerHTML=html; document.body.classList.add('open'); $('drClose').focus(); requestAnimationFrame(()=>after&&after()); }
+function cerrar(){ document.body.classList.remove('open'); }
+$('drClose').onclick=cerrar; $('scrim').onclick=cerrar; document.addEventListener('keydown',e=>{ if(e.key==='Escape') cerrar(); });
+function abrirLinea(x){
+  const i=(M.mes||1)-1;
+  abrir(nice(x.linea),`${MESES[i]||''} · ${d1(x.turnos)} turnos · ${x.personal!=null?d1(x.personal):'—'} personas`,
+  `<div class="mini"><div><b>${kg(x.total)}</b><span>Pedidos del mes</span></div><div><b>${x.total?pct(x.pCump):'—'}</b><span>% cumplimiento</span></div>
+   <div><b>${x.total?pct(x.pOtif):'—'}</b><span>% OTIF</span></div><div><b>${x.oee!=null?pct(x.oee):'—'}</b><span>OEE</span></div>
+   <div><b>${d1(x.desv)}</b><span>Días de desfase (pendientes)</span></div></div>
+   <h4>Programa</h4>
+   <ul class="list">
+    <li><span>Última fecha en programa (fin de vulcanizado)</span><b>${fd(x.fechaMax)}</b></li>
+    <li><span>Días hábiles libres resto de ${MESES[i]||'este mes'}</span><b>${d1(x.diasResto)}</b></li>
+    <li><span>Días hábiles libres en ${MESES[(i+1)%12]}</span><b>${d1(x.diasProx)}</b></li>
+    <li><span>Horas libres / horas del mes (${MESES[i]||''})</span><b>${d1(x.hLibresMes)} / ${d1(x.hTotalMes)}</b></li>
+    <li><span>Horas libres / horas del mes (${MESES[(i+1)%12]})</span><b>${d1(x.hLibresProx)} / ${d1(x.hTotalProx)}</b></li>
+    <li><span>Estado</span><b>${estadoPill(x.estado,x.desv)}</b></li>
+   </ul>
+   <h4>Horas disponibles frente a horas totales</h4><div class="chart-box" style="height:220px"><canvas id="dCap"></canvas></div>
+   ${x.obs||x.obs2?`<h4>Observaciones</h4><p>${esc([x.obs,x.obs2].filter(Boolean).join(' · '))}</p>`:''}`,
+  ()=>mk('dCap',{type:'bar',data:{labels:[MESES[i]||'Mes',MESES[(i+1)%12]],datasets:[
+     {label:'Horas ocupadas',data:[(x.hTotalMes||0)-(x.hLibresMes||0),(x.hTotalProx||0)-(x.hLibresProx||0)],backgroundColor:col('brand-ink'),borderRadius:3},
+     {label:'Horas libres',data:[x.hLibresMes||0,x.hLibresProx||0],backgroundColor:col('brand-pale'),borderRadius:3}]},
+     options:{maintainAspectRatio:false,scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,title:{display:true,text:'Horas'}}},plugins:{legend:{position:'bottom'}}}}));
+}
+function abrirMes(i){
+  const R=M.res.URBY;
+  abrir(`${MESES[i]} ${M.res.year||''}`,'Urby · hoja "resumen indicadores"',
+  `<div class="mini"><div><b>${kg(R.pedProg[i])}</b><span>Pedidos programados</span></div><div><b>${kg(R.pedEnt[i])}</b><span>Entregados</span></div>
+   <div><b>${pct(R.pCump[i])}</b><span>% cumplimiento</span></div><div><b>${pct(R.pOtif[i])}</b><span>% OTIF</span></div></div>
+   <ul class="list">
+    <li><span>Kilos presupuesto</span><b>${kg(R.kgPres[i])}</b></li><li><span>Kilos programados</span><b>${kg(R.kgProg[i])}</b></li>
+    <li><span>Kilos entregados</span><b>${kg(R.kgEnt[i])}</b></li>
+    <li><span>Personal presupuestado / real</span><b>${R.hcPres[i]??'—'} / ${esc(R.hcReal[i]??'—')}</b></li>
+    <li><span>Accidentes</span><b>${R.acc[i]??'—'}</b></li><li><span>Costos de no calidad</span><b>${money(R.cnc[i])}</b></li>
+    ${R.otifCorr[i]!=null?`<li><span>OTIF corregido (sin afectación al cliente)</span><b>${R.otifCorr[i]} · ${pct(R.pOtifCorr[i])}</b></li>`:''}
+   </ul>${i!==(M.mes||0)-1?'<p class="hint" style="margin-top:12px">El detalle por línea solo está disponible para el mes del reporte que tenga la hoja STATUS.</p>':''}`);
+}
+
+/* ===================== ciclo de vida ===================== */
+function pantalla(tipo,det=''){
+  const box={
+    config:`<h2>Falta configurar el tablero</h2><p>Edita el bloque CONFIG al inicio de index.html y pega el Id. de aplicación, el Id. de directorio y el vínculo del Excel.</p>`,
+    login:`<h2>Inicia sesión para ver el informe</h2><p>Usa tu cuenta corporativa de Microsoft. Solo verás el informe si tienes permiso sobre el Excel en SharePoint.</p><button class="btn" id="btnLogin" type="button">Iniciar sesión con Microsoft</button>`,
+    error:`<h2>No se pudo cargar el informe</h2>${det}<p style="margin-top:14px"><button class="btn" type="button" onclick="location.reload()">Reintentar</button></p>`
+  }[tipo];
+  $('screen').hidden=false; $('screen').innerHTML=`<div class="box">${box}</div>`;
+  $('viewUrby').hidden=$('viewConvey').hidden=true; $('unitTabs').hidden=true;
+  const b=$('btnLogin'); if(b) b.onclick=()=>app.loginRedirect({scopes:SCOPES,prompt:'select_account'});
+}
+function explicar(e){
+  const m=String(e.message||''), c=String(e.code||e.errorCode||'');
+  let t='Ocurrió un error inesperado.';
+  if(/AADSTS50011/.test(m)) t='La dirección de esta página no coincide con la registrada en Microsoft Entra. TI debe revisar la "URI de redirección".';
+  else if(/AADSTS65001|consent/i.test(m+c)) t='Falta el consentimiento del administrador para el permiso de lectura. TI debe pulsar "Conceder consentimiento de administrador".';
+  else if(/AADSTS700016|AADSTS90002/.test(m)) t='El Id. de aplicación o el Id. de directorio están mal copiados en la configuración.';
+  else if(e.status===401) t='La sesión expiró. Pulsa Reintentar.';
+  else if(e.status===403||/accessDenied/i.test(c)) t='Tu cuenta no tiene permiso para leer el Excel. Pide que lo compartan contigo con permiso "Puede ver".';
+  else if(e.rango) t=`No se encontró el rango ${e.rango}. Revisa que la hoja y el nombre del rango existan en el Excel.`;
+  else if(e.status===404) t='No se encontró el archivo. Revisa el vínculo del Excel en la configuración.';
+  else if(e.msal) t='No se pudo cargar el inicio de sesión de Microsoft. Revisa la conexión a internet o si la red bloquea alcdn.msauth.net.';
+  else if(/Failed to fetch|NetworkError/i.test(m)) t='No hay conexión con Microsoft. Revisa la red e intenta de nuevo.';
+  return `<p>${t}</p><div class="det">${esc(c)} ${esc(m).slice(0,400)}</div>`;
+}
+function mostrar(){
+  $('screen').hidden=true; $('unitTabs').hidden=false;
+  document.documentElement.dataset.uen=vista;
+  $('uenLogo').innerHTML=logoHTML(vista,'hdr');
+  document.querySelectorAll('#unitTabs button').forEach(b=>{ b.setAttribute('aria-selected',b.dataset.view===vista); b.onclick=()=>{ if(vista!==b.dataset.view){ vista=b.dataset.view; cerrar(); mostrar(); window.scrollTo({top:0}); } }; });
+  $('viewUrby').hidden=vista!=='URBY'; $('viewConvey').hidden=vista!=='CONVEY';
+  $('mainTitle').textContent=vista==='URBY'?'Indicador de cumplimiento de pedidos y estatus por línea':'Convey · resumen mensual de producción';
+  $('subtitle').textContent=`${MESES[(M.mes||1)-1]} ${M.res.year||''} · informe STATUS del Excel de producción`;
+  if(vista==='URBY') pintarUrby(); else pintarConvey();
+}
+async function actualizar(manual=false){
+  if(cargando) return; cargando=true; $('btnRefresh').classList.add('spin');
+  try{
+    const r=DEMO?DEMO:await leerExcel();
+    META=r.meta; M=modelo(r.raw); ultimaLectura=new Date();
+    if(!M.lineas.length&&M.total==null) throw Object.assign(new Error('La hoja STATUS llegó vacía.'),{rango:'STATUS'});
+    mostrar(); if(manual) toast('Informe actualizado con la última versión del Excel.');
+  }catch(e){
+    console.error(e);
+    if(M){ toast('No se pudo actualizar; se muestra la última lectura. '+(e.message||'')); }
+    else pantalla('error',explicar(e));
+  }finally{ cargando=false; $('btnRefresh').classList.remove('spin'); }
+}
+async function iniciar(){
+  $('btnRefresh').onclick=()=>actualizar(true);
+  const fs=$('btnFs');
+  fs.onclick=async()=>{ try{ document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen(); }catch(_){ toast('Usa la tecla F11 para pantalla completa.'); } };
+  document.addEventListener('fullscreenchange',()=>fs.querySelector('span').textContent=document.fullscreenElement?'Salir de pantalla completa':'Pantalla completa');
+  if(DEMO){ $('userBox').innerHTML='<span>Vista previa</span>'; await actualizar(); return; }
+  if(!configurado()) return pantalla('config');
+  try{ await cargarMSAL(); }catch(e){ e.msal=true; return pantalla('error',explicar(e)); }
+  app=new msal.PublicClientApplication({auth:{clientId:CONFIG.clientId,authority:'https://login.microsoftonline.com/'+CONFIG.tenantId,redirectUri:location.origin+location.pathname},cache:{cacheLocation:'localStorage'}});
+  let resp=null;
+  try{ resp=await app.handleRedirectPromise(); }catch(e){ return pantalla('error',explicar(e)); }
+  cuenta=resp?.account||app.getActiveAccount()||app.getAllAccounts()[0];
+  if(!cuenta){
+    if(!sessionStorage.getItem('intentoLogin')){ sessionStorage.setItem('intentoLogin','1'); return app.loginRedirect({scopes:SCOPES}); }
+    return pantalla('login');
+  }
+  sessionStorage.removeItem('intentoLogin'); app.setActiveAccount(cuenta);
+  $('userBox').innerHTML=`<span>${esc(cuenta.name||cuenta.username)}</span><a id="lnkOut">Cerrar sesión</a>`;
+  $('lnkOut').onclick=()=>app.logoutRedirect({account:cuenta});
+  await actualizar();
+  setInterval(()=>{ if(!document.hidden) actualizar(); },CONFIG.refrescarMin*60000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&ultimaLectura&&Date.now()-ultimaLectura>CONFIG.refrescarMin*60000) actualizar(); });
+}
+iniciar();
+</script>
+</body>
+</html>
